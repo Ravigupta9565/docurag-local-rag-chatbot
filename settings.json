@@ -1,0 +1,6 @@
+{
+  "top_k": 6,
+  "min_score": 0.15,
+  "llm_model": "llama3.2:3b",
+  "embedding_model": "all-MiniLM-L6-v2"
+}

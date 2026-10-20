@@ -1,0 +1,12 @@
+venv/
+index/
+data/
+node_modules/
+*.pkl
+eval_results.csv
+__pycache__/
+*.pyc
+.env
+dist/
+.vite/
+*.log
