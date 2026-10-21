@@ -1,9 +1,15 @@
-fastapi==0.146.0
-uvicorn==0.54.0
-python-multipart==0.0.32
-pypdf==6.21.1
-sentence-transformers==6.1.0
-faiss-cpu==1.15.1
-numpy==2.5.4
-ollama==0.6.3
-streamlit==1.66.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# PyTorch Lightweight CPU Build
+torch==2.1.4+cpu
+
+# FAISS CPU
+faiss-cpu==1.8.0
+
+# Sentence Transformers & RAG Dependencies
+sentence-transformers
+pypdf
+fastapi
+uvicorn
+python-multipart
+requests
