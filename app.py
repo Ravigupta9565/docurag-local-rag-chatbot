@@ -1,63 +1,42 @@
 import os
-import streamlit as st
+import uvicorn
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from pydantic import BaseModel
+from typing import List
 from ingest import build_index, DATA_DIR
 from rag import answer
 
-st.set_page_config(page_title="Chat with your PDFs", page_icon="📚")
-st.title("📚 Chat with your PDFs")
+app = FastAPI(title="DocuRAG API Backend")
 
-# ---------- Sidebar: upload and index ----------
-with st.sidebar:
-    st.header("Documents")
-    uploaded = st.file_uploader("Upload PDFs", type="pdf", accept_multiple_files=True)
+class QuestionRequest(BaseModel):
+    question: str
 
-    if st.button("Process documents", disabled=not uploaded):
+@app.get("/")
+def home():
+    return {"status": "DocuRAG API is live!"}
+
+@app.post("/api/chat")
+def chat_endpoint(payload: QuestionRequest):
+    try:
+        ans, sources = answer(payload.question)
+        return {"answer": ans, "sources": sources}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    try:
         os.makedirs(DATA_DIR, exist_ok=True)
-        for f in uploaded:
-            with open(os.path.join(DATA_DIR, f.name), "wb") as out:
-                out.write(f.getbuffer())
-        with st.spinner("Reading and indexing..."):
-            try:
-                n = build_index()
-                st.success(f"Done. {n} chunks indexed.")
-            except ValueError as e:
-                st.error(str(e))
+        for f in files:
+            file_path = os.path.join(DATA_DIR, f.filename)
+            with open(file_path, "wb") as buffer:
+                buffer.write(await f.read())
+        
+        chunks = build_index()
+        return {"message": "Files processed and indexed", "chunks": chunks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    st.caption("Files in library:")
-    if os.path.isdir(DATA_DIR):
-        for name in sorted(os.listdir(DATA_DIR)):
-            if name.lower().endswith(".pdf"):
-                st.write(f"• {name}")
-
-    if st.button("Clear chat"):
-        st.session_state.history = []
-        st.rerun()
-
-# ---------- Chat ----------
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-for role, msg in st.session_state.history:
-    with st.chat_message(role):
-        st.markdown(msg)
-
-question = st.chat_input("Ask a question about your documents")
-if question:
-    st.session_state.history.append(("user", question))
-    with st.chat_message("user"):
-        st.markdown(question)
-
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            ans, sources = answer(question)
-        st.markdown(ans)
-        if sources:
-            with st.expander("Sources"):
-                for s in sources:
-                    score = s.get("score")
-                    label = f"**{s['source']}**, page {s['page']}"
-                    if score is not None:
-                        label += f" (score {score:.2f})"
-                    st.markdown(label)
-                    st.caption(s["text"][:300] + "...")
-    st.session_state.history.append(("assistant", ans))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
