@@ -1,15 +1,11 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-# PyTorch Lightweight CPU Build
-torch==2.1.4+cpu
-
-# FAISS CPU
-faiss-cpu==1.8.0
-
-# Sentence Transformers & RAG Dependencies
-sentence-transformers
-pypdf
+torch
 fastapi
 uvicorn
 python-multipart
-requests
+pypdf
+sentence-transformers
+faiss-cpu
+numpy
+streamlit
