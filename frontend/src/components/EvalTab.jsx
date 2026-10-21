@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Calendar
 } from 'lucide-react'
+import { safeJson } from '../utils/api'
 
 export default function EvalTab({ onToast }) {
   const [evalData, setEvalData] = useState(null)
@@ -30,8 +31,8 @@ export default function EvalTab({ onToast }) {
       const res = await fetch('/api/eval', {
         headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
       })
-      if (!res.ok) throw new Error('Failed to load evaluation results')
-      const data = await res.json()
+      const data = await safeJson(res)
+      if (!res.ok) throw new Error(data.detail || 'Failed to load evaluation results')
       setEvalData(data)
     } catch (err) {
       onToast(err.message, 'error')
@@ -63,7 +64,7 @@ export default function EvalTab({ onToast }) {
         method: 'POST',
         headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) {
         throw new Error(data.detail || 'Benchmark evaluation failed')
       }

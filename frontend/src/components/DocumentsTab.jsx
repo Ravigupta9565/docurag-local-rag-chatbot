@@ -12,6 +12,7 @@ import {
   FileCheck,
   AlertCircle
 } from 'lucide-react'
+import { safeJson } from '../utils/api'
 
 export default function DocumentsTab({ onToast, onRefreshHealth }) {
   const [documents, setDocuments] = useState([])
@@ -26,8 +27,8 @@ export default function DocumentsTab({ onToast, onRefreshHealth }) {
     setLoading(true)
     try {
       const res = await fetch('/api/documents')
-      if (!res.ok) throw new Error('Failed to fetch documents')
-      const data = await res.json()
+      const data = await safeJson(res)
+      if (!res.ok) throw new Error(data.detail || 'Failed to fetch documents')
       setDocuments(data.documents || [])
     } catch (err) {
       onToast(err.message, 'error')
@@ -61,7 +62,7 @@ export default function DocumentsTab({ onToast, onRefreshHealth }) {
         method: 'POST',
         body: formData
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) {
         throw new Error(data.detail || 'Upload failed')
       }
@@ -88,7 +89,7 @@ export default function DocumentsTab({ onToast, onRefreshHealth }) {
     setIndexingResult(null)
     try {
       const res = await fetch('/api/index', { method: 'POST' })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) {
         throw new Error(data.detail || 'Indexing failed')
       }
@@ -122,7 +123,7 @@ export default function DocumentsTab({ onToast, onRefreshHealth }) {
       const res = await fetch(`/api/documents/${encodeURIComponent(filename)}`, {
         method: 'DELETE'
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) throw new Error(data.detail || 'Failed to delete file')
 
       onToast(`Deleted "${filename}". Index updated.`, 'info')

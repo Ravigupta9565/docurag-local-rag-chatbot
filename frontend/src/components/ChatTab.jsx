@@ -14,6 +14,7 @@ import {
   ExternalLink,
   BookOpen
 } from 'lucide-react'
+import { safeJson } from '../utils/api'
 
 export default function ChatTab({ setActiveTab, health, onToast }) {
   const [messages, setMessages] = useState([
@@ -99,7 +100,7 @@ export default function ChatTab({ setActiveTab, health, onToast }) {
       })
 
       if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}))
+        const errJson = await safeJson(response).catch(() => ({}))
         throw new Error(errJson.detail || `Server returned error status ${response.status}`)
       }
 

@@ -12,6 +12,7 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react'
+import { safeJson } from '../utils/api'
 
 export default function SettingsTab({ onToast, onRefreshHealth, health }) {
   const [topK, setTopK] = useState(6)
@@ -25,8 +26,8 @@ export default function SettingsTab({ onToast, onRefreshHealth, health }) {
     setLoading(true)
     try {
       const res = await fetch('/api/settings')
-      if (!res.ok) throw new Error('Failed to load settings')
-      const data = await res.json()
+      const data = await safeJson(res)
+      if (!res.ok) throw new Error(data.detail || 'Failed to load settings')
       if (data.settings) {
         setTopK(data.settings.top_k ?? 6)
         setMinScore(data.settings.min_score ?? 0.15)
@@ -57,7 +58,7 @@ export default function SettingsTab({ onToast, onRefreshHealth, health }) {
           llm_model: selectedModel
         })
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) throw new Error(data.detail || 'Failed to save settings')
       onToast('Settings successfully updated!', 'success')
       onRefreshHealth()
