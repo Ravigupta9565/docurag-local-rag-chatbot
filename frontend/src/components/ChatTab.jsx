@@ -14,7 +14,7 @@ import {
   ExternalLink,
   BookOpen
 } from 'lucide-react'
-import { safeJson } from '../utils/api'
+import { API_BASE_URL, safeJson } from '../utils/api'
 
 export default function ChatTab({ setActiveTab, health, onToast }) {
   const [messages, setMessages] = useState([
@@ -90,7 +90,7 @@ export default function ChatTab({ setActiveTab, health, onToast }) {
     setIsStreaming(true)
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -100,8 +100,19 @@ export default function ChatTab({ setActiveTab, health, onToast }) {
       })
 
       if (!response.ok) {
-        const errJson = await safeJson(response).catch(() => ({}))
-        throw new Error(errJson.detail || `Server returned error status ${response.status}`)
+        let errorMsg = `Server error (HTTP ${response.status})`
+        try {
+          const contentType = response.headers.get('content-type') || ''
+          if (contentType.includes('application/json')) {
+            const errJson = await response.json()
+            errorMsg = errJson.detail || errJson.message || errorMsg
+          } else {
+            const rawText = await response.text()
+            const snippet = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150)
+            errorMsg = `Server returned HTTP ${response.status}: ${snippet || response.statusText}`
+          }
+        } catch (_) {}
+        throw new Error(errorMsg)
       }
 
       const reader = response.body.getReader()

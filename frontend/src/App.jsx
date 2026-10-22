@@ -8,7 +8,7 @@ import SettingsTab from './components/SettingsTab'
 import Toast from './components/Toast'
 import { ShieldCheck } from 'lucide-react'
 import profileConfig from './config/profile'
-import { safeJson } from './utils/api'
+import { API_BASE_URL, safeJson } from './utils/api'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home')
@@ -29,7 +29,7 @@ export default function App() {
 
   const fetchHealth = async () => {
     try {
-      const res = await fetch('/api/health')
+      const res = await fetch(`${API_BASE_URL}/api/health`)
       if (res.ok) {
         const data = await safeJson(res)
         setHealth(data)

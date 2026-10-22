@@ -1,52 +1,92 @@
 /**
- * api.js – Safe fetch wrapper for all backend calls.
+ * api.js – Centralized API configuration and safe response handler.
  *
- * The Render free-tier backend returns an HTML "The page cannot be found"
- * error page (not JSON) during cold starts or when the service is sleeping.
- * Calling res.json() directly on such a response throws:
- *   "Unexpected token 'T', "The page c"... is not valid JSON"
- *
- * safeJson() guards against this by checking Content-Type before parsing.
+ * Directs frontend calls to the live Render backend at:
+ * https://docurag-local-rag-chatbot.onrender.com
  */
 
+export const API_BASE_URL = (
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
+  "https://docurag-local-rag-chatbot.onrender.com"
+).replace(/\/$/, "");
+
 /**
- * Parse a fetch Response as JSON safely.
- * If the response is not application/json, throws a descriptive Error
- * instead of a cryptic SyntaxError.
+ * Builds an absolute API URL using API_BASE_URL.
  *
- * @param {Response} res - The fetch Response object
- * @returns {Promise<any>} Parsed JSON
+ * @param {string} endpoint - e.g. "/api/upload" or "api/upload"
+ * @returns {string} - e.g. "https://docurag-local-rag-chatbot.onrender.com/api/upload"
  */
-export async function safeJson(res) {
-  const contentType = res.headers.get('Content-Type') || ''
-  if (!contentType.includes('application/json')) {
-    // Grab a snippet of the raw body to help with debugging
-    let snippet = ''
-    try {
-      snippet = (await res.text()).slice(0, 200)
-    } catch (_) {
-      // ignore
-    }
-    throw new Error(
-      `Backend returned a non-JSON response (HTTP ${res.status}). ` +
-      `The server may be starting up or unreachable on Render. ` +
-      (snippet ? `Raw: ${snippet}` : '')
-    )
+export function apiUrl(endpoint) {
+  if (!endpoint) return API_BASE_URL;
+  if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+    return endpoint;
   }
-  return res.json()
+  const clean = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  return `${API_BASE_URL}${clean}`;
 }
 
 /**
- * Wrapper around fetch that always returns a safe JSON response.
- * On network errors or non-JSON responses it throws an Error with
- * a human-readable message.
+ * Parses a fetch Response safely with full status and content-type verification.
+ * 
+ * - Verifies res.ok (HTTP 200-299)
+ * - Guards against non-JSON (e.g. HTML 404 / 502 / 503 proxy pages)
+ * - Extracts clean error details without throwing cryptic "Unexpected token 'T'"
  *
- * @param {string} url
- * @param {RequestInit} [options]
- * @returns {Promise<{ res: Response, data: any }>}
+ * @param {Response} res - The fetch response
+ * @returns {Promise<any>}
  */
-export async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options)
-  const data = await safeJson(res)
-  return { res, data }
+export async function safeJson(res) {
+  const contentType = (res.headers && (res.headers.get("content-type") || res.headers.get("Content-Type"))) || "";
+
+  if (!res.ok) {
+    let errorDetail = `Request failed with HTTP ${res.status}`;
+    try {
+      if (contentType.includes("application/json")) {
+        const errJson = await res.json();
+        errorDetail = errJson.detail || errJson.message || errJson.error || JSON.stringify(errJson);
+      } else {
+        const rawText = await res.text();
+        const snippet = rawText
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 150);
+        errorDetail = `Backend error (HTTP ${res.status}): ${snippet || res.statusText || "Server error"}`;
+      }
+    } catch (_) {
+      errorDetail = `Backend returned HTTP ${res.status} (${res.statusText || "Error"})`;
+    }
+
+    const err = new Error(errorDetail);
+    err.status = res.status;
+    throw err;
+  }
+
+  if (!contentType.includes("application/json")) {
+    let snippet = "";
+    try {
+      const rawText = await res.text();
+      snippet = rawText
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 150);
+    } catch (_) {}
+
+    throw new Error(
+      `Expected JSON from backend, but received non-JSON (HTTP ${res.status}). ${snippet || "Check backend status."}`
+    );
+  }
+
+  return res.json();
+}
+
+/**
+ * Convenience wrapper around fetch using apiUrl and safeJson.
+ */
+export async function apiFetch(endpoint, options = {}) {
+  const url = apiUrl(endpoint);
+  const res = await fetch(url, options);
+  const data = await safeJson(res);
+  return { res, data };
 }

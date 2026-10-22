@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Calendar
 } from 'lucide-react'
-import { safeJson } from '../utils/api'
+import { API_BASE_URL, safeJson } from '../utils/api'
 
 export default function EvalTab({ onToast }) {
   const [evalData, setEvalData] = useState(null)
@@ -28,7 +28,7 @@ export default function EvalTab({ onToast }) {
   const fetchEval = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/eval', {
+      const res = await fetch(`${API_BASE_URL}/api/eval`, {
         headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
       })
       const data = await safeJson(res)
@@ -60,7 +60,7 @@ export default function EvalTab({ onToast }) {
   const handleRunBenchmark = async () => {
     setRunning(true)
     try {
-      const res = await fetch('/api/eval/run', { 
+      const res = await fetch(`${API_BASE_URL}/api/eval/run`, { 
         method: 'POST',
         headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
       })

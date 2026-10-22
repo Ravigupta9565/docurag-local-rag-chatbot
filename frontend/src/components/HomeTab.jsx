@@ -22,7 +22,7 @@ import {
   ExternalLink
 } from 'lucide-react'
 import profileConfig from '../config/profile'
-import { safeJson } from '../utils/api'
+import { API_BASE_URL, safeJson } from '../utils/api'
 
 export default function HomeTab({ setActiveTab, health, onReindex }) {
   const [evalData, setEvalData] = useState(null)
@@ -32,7 +32,7 @@ export default function HomeTab({ setActiveTab, health, onReindex }) {
     let isMounted = true
     const fetchEval = async () => {
       try {
-        const res = await fetch('/api/eval', {
+        const res = await fetch(`${API_BASE_URL}/api/eval`, {
           headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
         })
         if (res.ok && isMounted) {

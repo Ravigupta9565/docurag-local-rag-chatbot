@@ -12,7 +12,7 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react'
-import { safeJson } from '../utils/api'
+import { API_BASE_URL, safeJson } from '../utils/api'
 
 export default function SettingsTab({ onToast, onRefreshHealth, health }) {
   const [topK, setTopK] = useState(6)
@@ -25,7 +25,7 @@ export default function SettingsTab({ onToast, onRefreshHealth, health }) {
   const fetchSettings = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/settings')
+      const res = await fetch(`${API_BASE_URL}/api/settings`)
       const data = await safeJson(res)
       if (!res.ok) throw new Error(data.detail || 'Failed to load settings')
       if (data.settings) {
@@ -49,7 +49,7 @@ export default function SettingsTab({ onToast, onRefreshHealth, health }) {
     e.preventDefault()
     setSaving(true)
     try {
-      const res = await fetch('/api/settings', {
+      const res = await fetch(`${API_BASE_URL}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
