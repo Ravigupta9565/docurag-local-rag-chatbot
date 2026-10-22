@@ -62,7 +62,7 @@ Answer:"""
 
     try:
         completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # Updated to active non-decommissioned Groq model
+            model="llama-3.3-70b-versatile",  # Updated to universal active Groq model
             messages=[
                 {"role": "system", "content": "You are a helpful AI document assistant."},
                 {"role": "user", "content": prompt}

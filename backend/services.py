@@ -22,7 +22,7 @@ def get_ollama_status():
     if client and groq_api_key:
         return {
             "status": "connected",
-            "models": ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
+            "models": ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"]
         }
     return {
         "status": "offline",
@@ -170,11 +170,9 @@ def answer_custom_sync(question: str, k: int = None, min_score: float = None, mo
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
     
-    raw_model = model or settings.get("llm_model", "llama-3.1-8b-instant")
-    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model or "8192" in raw_model:
-        llm_model = "llama-3.1-8b-instant"
-    else:
-        llm_model = raw_model
+    raw_model = model or settings.get("llm_model", "llama-3.3-70b-versatile")
+    # Force universal versatile model to avoid 404 model not found errors
+    llm_model = "llama-3.3-70b-versatile"
 
     docs = retrieve_custom(question, k=k_val, min_score=score_cutoff)
     if not docs:
@@ -217,11 +215,8 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
     
-    raw_model = model or settings.get("llm_model", "llama-3.1-8b-instant")
-    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model or "8192" in raw_model:
-        llm_model = "llama-3.1-8b-instant"
-    else:
-        llm_model = raw_model
+    raw_model = model or settings.get("llm_model", "llama-3.3-70b-versatile")
+    llm_model = "llama-3.3-70b-versatile"
 
     if not rag.has_index():
         payload = json.dumps({"type": "error", "message": "No documents are indexed yet. Please upload a PDF first."})
@@ -379,7 +374,7 @@ def run_evaluation_service():
     settings = load_settings()
     k_val = settings.get("top_k", 6)
     min_score = settings.get("min_score", 0.15)
-    model = "llama-3.1-8b-instant"
+    model = "llama-3.3-70b-versatile"
 
     rows = []
     tests = eval_module.TESTS
