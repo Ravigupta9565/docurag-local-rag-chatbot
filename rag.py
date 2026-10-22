@@ -1,69 +1,67 @@
-import os, pickle
+import os
 import faiss
-import ollama
-from ingest import get_model, INDEX_DIR
+import pickle
+from groq import Groq
+from sentence_transformers import SentenceTransformer
 
-LLM_MODEL = "llama3.2:3b"
-MIN_SCORE = 0.15   # default similarity threshold 0.15
-DEFAULT_K = 6      # default k=6
+# Groq Client Initialization
+groq_api_key = os.environ.get("GROQ_API_KEY")
+client = Groq(api_key=groq_api_key) if groq_api_key else None
 
-def has_index():
-    return (os.path.exists(os.path.join(INDEX_DIR, "faiss.index"))
-            and os.path.exists(os.path.join(INDEX_DIR, "chunks.pkl")))
+# Load Embedding Model
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+INDEX_PATH = "index/faiss.index"
+CHUNKS_PATH = "index/chunks.pkl"
 
 def load_index():
-    index = faiss.read_index(os.path.join(INDEX_DIR, "faiss.index"))
-    with open(os.path.join(INDEX_DIR, "chunks.pkl"), "rb") as f:
+    if not os.path.exists(INDEX_PATH) or not os.path.exists(CHUNKS_PATH):
+        return None, None
+    index = faiss.read_index(INDEX_PATH)
+    with open(CHUNKS_PATH, "rb") as f:
         chunks = pickle.load(f)
     return index, chunks
 
-def retrieve(question, k=6, min_score=None):
-    if min_score is None:
-        min_score = MIN_SCORE
-    if not has_index():
-        return []
+def query_rag(question: str, top_k: int = 3):
     index, chunks = load_index()
-    if not chunks:
-        return []
-    k = min(k, len(chunks))
-    q = get_model().encode([question], normalize_embeddings=True).astype("float32")
-    scores, ids = index.search(q, k)
-    results = []
-    for score, i in zip(scores[0], ids[0]):
-        if i == -1 or score < min_score:
-            continue
-        d = dict(chunks[i])
-        d["score"] = float(score)
-        results.append(d)
-    return results
+    if index is None or chunks is None:
+        return {
+            "answer": "No indexed documents found. Please upload a PDF and rebuild the index first.",
+            "sources": []
+        }
 
-def answer(question, k=6, min_score=None):
-    if min_score is None:
-        min_score = MIN_SCORE
-    if not has_index():
-        return "No documents are indexed yet. Please upload a PDF first.", []
+    # Embed question and search FAISS
+    q_embed = embedding_model.encode([question])
+    distances, indices = index.search(q_embed, top_k)
 
-    docs = retrieve(question, k=k, min_score=min_score)
-    if not docs:
-        return "I couldn't find relevant information in the uploaded documents.", []
+    retrieved_chunks = [chunks[i] for i in indices[0] if i < len(chunks)]
+    context = "\n\n".join([c["text"] for c in retrieved_chunks])
 
-    context = "\n\n".join(d["text"] for d in docs)
-    prompt = (
-        "Answer the question using ONLY the context below. "
-        "If the answer is not in the context, say you don't know. "
-        "Be concise. Do not mention page numbers or file names; "
-        "sources are shown separately.\n\n"
-        f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
-    )
-    resp = ollama.chat(
-        model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        options={"temperature": 0},
-    )
-    return resp["message"]["content"], docs
+    if not client:
+        return {
+            "answer": "GROQ_API_KEY is missing in backend environment variables.",
+            "sources": retrieved_chunks
+        }
 
-if __name__ == "__main__":
-    q = input("Ask: ")
-    ans, sources = answer(q)
-    print("\n", ans)
-    print("\nSources:", [(s["source"], s["page"], round(s["score"], 2)) for s in sources])
+    prompt = f"""Use the provided context to answer the question accurately and concisely. If the answer is not in the context, say "I don't know based on the provided document."
+
+Context:
+{context}
+
+Question: {question}
+Answer:"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[
+                {"role": "system", "content": "You are a helpful AI document assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=1024
+        )
+        answer_text = completion.choices[0].message.content
+        return {"answer": answer_text, "sources": retrieved_chunks}
+    except Exception as e:
+        return {"answer": f"Error calling Groq API: {str(e)}", "sources": retrieved_chunks}
