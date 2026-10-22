@@ -5,7 +5,7 @@ import json
 import pickle
 from datetime import datetime
 from pypdf import PdfReader
-import ollama
+from groq import Groq
 
 from backend.config import DATA_DIR, INDEX_DIR, EVAL_FILE, load_settings
 from backend.logger import logger
@@ -13,31 +13,22 @@ import ingest
 import rag
 import eval as eval_module
 
+# Groq Client Initialization
+groq_api_key = os.environ.get("GROQ_API_KEY")
+client = Groq(api_key=groq_api_key) if groq_api_key else None
+
 def get_ollama_status():
-    """Check if Ollama service is reachable and return model list."""
-    try:
-        models_data = ollama.list()
-        models = []
-        raw_list = getattr(models_data, "models", models_data)
-        if isinstance(raw_list, list):
-            for m in raw_list:
-                if hasattr(m, "model"):
-                    models.append(m.model)
-                elif isinstance(m, dict):
-                    models.append(m.get("model") or m.get("name", ""))
-                elif isinstance(m, str):
-                    models.append(m)
+    """Check Groq API availability instead of local Ollama."""
+    if client and groq_api_key:
         return {
             "status": "connected",
-            "models": sorted(list(set(models)))
+            "models": ["llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"]
         }
-    except Exception as e:
-        logger.warning(f"Ollama connection check failed: {e}")
-        return {
-            "status": "offline",
-            "error": str(e),
-            "models": []
-        }
+    return {
+        "status": "offline",
+        "error": "GROQ_API_KEY is not configured in environment variables.",
+        "models": []
+    }
 
 def get_documents_info():
     """List all PDFs in data/ with page count, file size, text status, chunk count."""
@@ -170,14 +161,17 @@ def retrieve_custom(question: str, k: int = None, min_score: float = None):
     return results
 
 def answer_custom_sync(question: str, k: int = None, min_score: float = None, model: str = None):
-    """Sync answer generation."""
+    """Sync answer generation using Groq Cloud API."""
     if not rag.has_index():
         return "No documents are indexed yet. Please upload a PDF first.", []
     
+    if not client:
+        return "GROQ_API_KEY is missing in backend environment variables.", []
+
     settings = load_settings()
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
-    llm_model = model or settings.get("llm_model", "llama3.2:3b")
+    llm_model = model or "llama3-70b-8192"
 
     docs = retrieve_custom(question, k=k_val, min_score=score_cutoff)
     if not docs:
@@ -193,24 +187,33 @@ def answer_custom_sync(question: str, k: int = None, min_score: float = None, mo
     )
     
     try:
-        resp = ollama.chat(
+        completion = client.chat.completions.create(
             model=llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0},
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant that answers questions based on documents."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            max_tokens=1024,
         )
-        return resp["message"]["content"], docs
+        return completion.choices[0].message.content, docs
     except Exception as e:
-        logger.error(f"Ollama chat error: {e}")
-        raise RuntimeError(f"Error contacting Ollama with model '{llm_model}': {e}")
+        logger.error(f"Groq API error: {e}")
+        raise RuntimeError(f"Error contacting Groq API with model '{llm_model}': {e}")
 
 def answer_custom_stream(question: str, k: int = None, min_score: float = None, model: str = None):
-    """Server-Sent Events generator for streaming answer."""
+    """Server-Sent Events generator for streaming answer via Groq API."""
     start_time = time.time()
     
+    if not client:
+        payload = json.dumps({"type": "error", "message": "GROQ_API_KEY is missing in backend environment variables."})
+        yield f"data: {payload}\n\n"
+        return
+
     settings = load_settings()
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
-    llm_model = model or settings.get("llm_model", "llama3.2:3b")
+    llm_model = model or "llama3-70b-8192"
 
     # Step 1: Check index
     if not rag.has_index():
@@ -227,7 +230,7 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
         yield f"data: {payload}\n\n"
         return
 
-    # Step 3: Handle no docs found (no sources emitted on refusal)
+    # Step 3: Handle no docs found
     if not docs:
         refusal_msg = "I couldn't find relevant information in the uploaded documents."
         yield f"data: {json.dumps({'type': 'sources', 'sources': []})}\n\n"
@@ -239,7 +242,7 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
     # Emit sources
     yield f"data: {json.dumps({'type': 'sources', 'sources': docs})}\n\n"
 
-    # Step 4: Stream response from Ollama
+    # Step 4: Stream response from Groq API
     context = "\n\n".join(d["text"] for d in docs)
     prompt = (
         "Answer the question using ONLY the context below. "
@@ -250,22 +253,26 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
     )
 
     try:
-        response_stream = ollama.chat(
+        response_stream = client.chat.completions.create(
             model=llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0},
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant that answers questions based on documents."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            max_tokens=1024,
             stream=True
         )
         for chunk in response_stream:
-            content = chunk.get("message", {}).get("content", "")
+            content = chunk.choices[0].delta.content or ""
             if content:
                 yield f"data: {json.dumps({'type': 'token', 'token': content})}\n\n"
 
         elapsed = round(time.time() - start_time, 2)
         yield f"data: {json.dumps({'type': 'done', 'total_time': elapsed})}\n\n"
     except Exception as e:
-        logger.error(f"Ollama streaming failure: {e}", exc_info=True)
-        err_msg = f"Failed to generate answer from Ollama ({llm_model}): {str(e)}"
+        logger.error(f"Groq API streaming failure: {e}", exc_info=True)
+        err_msg = f"Failed to generate answer from Groq API ({llm_model}): {str(e)}"
         yield f"data: {json.dumps({'type': 'error', 'message': err_msg})}\n\n"
 
 def get_evaluation_metrics():
@@ -295,7 +302,6 @@ def get_evaluation_metrics():
     total_seconds = 0.0
 
     try:
-        # Get last run timestamp from file modified time
         last_mtime = os.path.getmtime(EVAL_FILE)
         last_run_str = datetime.fromtimestamp(last_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -370,7 +376,7 @@ def run_evaluation_service():
     settings = load_settings()
     k_val = settings.get("top_k", 6)
     min_score = settings.get("min_score", 0.15)
-    model = settings.get("llm_model", "llama3.2:3b")
+    model = "llama3-70b-8192"
 
     rows = []
     tests = eval_module.TESTS
