@@ -13,7 +13,6 @@ import ingest
 import rag
 import eval as eval_module
 
-# Groq Client Initialization with fallback API key
 # Groq Client Initialization (Secure via environment variable)
 groq_api_key = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key) if groq_api_key else None
@@ -23,7 +22,7 @@ def get_ollama_status():
     if client and groq_api_key:
         return {
             "status": "connected",
-            "models": ["llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"]
+            "models": ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
         }
     return {
         "status": "offline",
@@ -171,9 +170,9 @@ def answer_custom_sync(question: str, k: int = None, min_score: float = None, mo
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
     
-    raw_model = model or settings.get("llm_model", "llama3-8b-8192")
-    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model:
-        llm_model = "llama3-8b-8192"
+    raw_model = model or settings.get("llm_model", "llama-3.1-8b-instant")
+    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model or "8192" in raw_model:
+        llm_model = "llama-3.1-8b-instant"
     else:
         llm_model = raw_model
 
@@ -218,9 +217,9 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
     
-    raw_model = model or settings.get("llm_model", "llama3-8b-8192")
-    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model:
-        llm_model = "llama3-8b-8192"
+    raw_model = model or settings.get("llm_model", "llama-3.1-8b-instant")
+    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model or "8192" in raw_model:
+        llm_model = "llama-3.1-8b-instant"
     else:
         llm_model = raw_model
 
@@ -380,7 +379,7 @@ def run_evaluation_service():
     settings = load_settings()
     k_val = settings.get("top_k", 6)
     min_score = settings.get("min_score", 0.15)
-    model = "llama3-8b-8192"
+    model = "llama-3.1-8b-instant"
 
     rows = []
     tests = eval_module.TESTS

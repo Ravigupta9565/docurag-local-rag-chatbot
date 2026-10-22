@@ -4,7 +4,7 @@ import pickle
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 
-# Groq Client Initialization
+# Groq Client Initialization (Secure via environment variable)
 groq_api_key = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key) if groq_api_key else None
 
@@ -62,7 +62,7 @@ Answer:"""
 
     try:
         completion = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.1-8b-instant",  # Updated to active non-decommissioned Groq model
             messages=[
                 {"role": "system", "content": "You are a helpful AI document assistant."},
                 {"role": "user", "content": prompt}
