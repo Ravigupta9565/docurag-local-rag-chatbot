@@ -13,7 +13,8 @@ import ingest
 import rag
 import eval as eval_module
 
-# Groq Client Initialization
+# Groq Client Initialization with fallback API key
+# Groq Client Initialization (Secure via environment variable)
 groq_api_key = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key) if groq_api_key else None
 
@@ -119,12 +120,10 @@ def delete_document_service(filename: str):
     os.remove(target)
     logger.info(f"Deleted file {safe_name}")
     
-    # Check if other PDFs remain
     remaining = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(".pdf")]
     if remaining:
         return rebuild_index_service()
     else:
-        # Clear index files
         for f in ["faiss.index", "chunks.pkl"]:
             p = os.path.join(INDEX_DIR, f)
             if os.path.exists(p):
@@ -161,7 +160,7 @@ def retrieve_custom(question: str, k: int = None, min_score: float = None):
     return results
 
 def answer_custom_sync(question: str, k: int = None, min_score: float = None, model: str = None):
-    """Sync answer generation using Groq Cloud API."""
+    """Sync answer generation using Groq Cloud API with model mapping."""
     if not rag.has_index():
         return "No documents are indexed yet. Please upload a PDF first.", []
     
@@ -171,7 +170,12 @@ def answer_custom_sync(question: str, k: int = None, min_score: float = None, mo
     settings = load_settings()
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
-    llm_model = model or "llama3-70b-8192"
+    
+    raw_model = model or settings.get("llm_model", "llama3-8b-8192")
+    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model:
+        llm_model = "llama3-8b-8192"
+    else:
+        llm_model = raw_model
 
     docs = retrieve_custom(question, k=k_val, min_score=score_cutoff)
     if not docs:
@@ -202,7 +206,7 @@ def answer_custom_sync(question: str, k: int = None, min_score: float = None, mo
         raise RuntimeError(f"Error contacting Groq API with model '{llm_model}': {e}")
 
 def answer_custom_stream(question: str, k: int = None, min_score: float = None, model: str = None):
-    """Server-Sent Events generator for streaming answer via Groq API."""
+    """Server-Sent Events generator for streaming answer via Groq API with model mapping."""
     start_time = time.time()
     
     if not client:
@@ -213,15 +217,18 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
     settings = load_settings()
     k_val = k if k is not None else settings.get("top_k", 6)
     score_cutoff = min_score if min_score is not None else settings.get("min_score", 0.15)
-    llm_model = model or "llama3-70b-8192"
+    
+    raw_model = model or settings.get("llm_model", "llama3-8b-8192")
+    if not raw_model or "llama3.2" in raw_model or "3b" in raw_model:
+        llm_model = "llama3-8b-8192"
+    else:
+        llm_model = raw_model
 
-    # Step 1: Check index
     if not rag.has_index():
         payload = json.dumps({"type": "error", "message": "No documents are indexed yet. Please upload a PDF first."})
         yield f"data: {payload}\n\n"
         return
 
-    # Step 2: Retrieve
     try:
         docs = retrieve_custom(question, k=k_val, min_score=score_cutoff)
     except Exception as e:
@@ -230,7 +237,6 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
         yield f"data: {payload}\n\n"
         return
 
-    # Step 3: Handle no docs found
     if not docs:
         refusal_msg = "I couldn't find relevant information in the uploaded documents."
         yield f"data: {json.dumps({'type': 'sources', 'sources': []})}\n\n"
@@ -239,10 +245,8 @@ def answer_custom_stream(question: str, k: int = None, min_score: float = None, 
         yield f"data: {json.dumps({'type': 'done', 'total_time': elapsed})}\n\n"
         return
 
-    # Emit sources
     yield f"data: {json.dumps({'type': 'sources', 'sources': docs})}\n\n"
 
-    # Step 4: Stream response from Groq API
     context = "\n\n".join(d["text"] for d in docs)
     prompt = (
         "Answer the question using ONLY the context below. "
@@ -376,7 +380,7 @@ def run_evaluation_service():
     settings = load_settings()
     k_val = settings.get("top_k", 6)
     min_score = settings.get("min_score", 0.15)
-    model = "llama3-70b-8192"
+    model = "llama3-8b-8192"
 
     rows = []
     tests = eval_module.TESTS
